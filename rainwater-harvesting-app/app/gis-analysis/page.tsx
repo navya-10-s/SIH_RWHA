@@ -8,6 +8,7 @@ import { Footer } from "@/components/footer"
 import { AuthGuard } from "@/components/auth-guard"
 import { MapPin, Loader2, Satellite } from "lucide-react"
 import { toast } from "sonner"
+import InteractiveMap from "@/components/interactive-map"
 
 interface LocationData {
   latitude: number
@@ -61,8 +62,25 @@ export default function GISAnalysisPage() {
         enableHighAccuracy: true,
         timeout: 10000,
         maximumAge: 60000,
-      },
+      }
     )
+  }
+
+  const handleSubmit = () => {
+    if (!location) return
+
+    const payload = {
+      location: {
+        latitude: location.latitude,
+        longitude: location.longitude,
+      },
+      accuracy: location.accuracy,
+      timestamp: new Date().toISOString(),
+    }
+
+    console.log("Submitting payload:", payload)
+    toast.success("Payload ready for submission!")
+    // TODO: Connect to backend API
   }
 
   return (
@@ -135,12 +153,15 @@ export default function GISAnalysisPage() {
                         <p className="text-sm text-muted-foreground">Accuracy</p>
                         <p className="text-lg">±{Math.round(location.accuracy)} meters</p>
                       </div>
+                      <Button onClick={handleSubmit} className="mt-4">
+                        Submit for Analysis
+                      </Button>
                     </div>
                   )}
                 </CardContent>
               </Card>
 
-              {/* Satellite Map Placeholder */}
+              {/* Satellite Map */}
               {location && (
                 <Card>
                   <CardHeader>
@@ -150,21 +171,11 @@ export default function GISAnalysisPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="aspect-video bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
-                      {/* Placeholder satellite map */}
-                      <div className="absolute inset-0 bg-gradient-to-br from-green-100 to-blue-100 dark:from-green-900/20 dark:to-blue-900/20" />
-                      <div className="relative z-10 text-center">
-                        <Satellite className="h-12 w-12 mx-auto mb-4 text-primary" />
-                        <h3 className="text-xl font-semibold mb-2">Satellite Map Loading...</h3>
-                        <p className="text-muted-foreground">
-                          Location: {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
-                        </p>
-                      </div>
-                      {/* Crosshair indicator */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-8 h-8 border-2 border-primary rounded-full bg-primary/20" />
-                      </div>
-                    </div>
+                    <InteractiveMap
+                      initialLat={location.latitude}
+                      initialLng={location.longitude}
+                      accuracy={location.accuracy}
+                    />
                   </CardContent>
                 </Card>
               )}
