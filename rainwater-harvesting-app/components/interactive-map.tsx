@@ -11,119 +11,89 @@ interface InteractiveMapProps {
   onRooftopDraw?: (polygon: number[][]) => void
 }
 
+declare global {
+  interface Window {
+    google: typeof google
+    initMap: () => void
+  }
+}
+
 const InteractiveMap = ({
   initialLat = 28.597082,
   initialLng = 77.793120,
   onRooftopDraw,
 }: InteractiveMapProps) => {
   const mapRef = useRef<HTMLDivElement>(null)
-  const isMapInitialized = useRef(false)
   const [map, setMap] = useState<any | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [coordinates, setCoordinates] = useState({ lat: initialLat, lng: initialLng })
 
   useEffect(() => {
-    loadLeafletAssets()
+    loadGoogleMapsScript()
   }, [])
 
-  const loadLeafletAssets = () => {
-    const leafletCSS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    const leafletJS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    const drawCSS = "https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"
-    const drawJS = "https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"
+  const loadGoogleMapsScript = () => {
+    if (document.getElementById("google-maps-script")) return
 
-    const injectCSS = (href: string) => {
-      if (!document.querySelector(`link[href="${href}"]`)) {
-        const link = document.createElement("link")
-        link.rel = "stylesheet"
-        link.href = href
-        document.head.appendChild(link)
-      }
-    }
+    const script = document.createElement("script")
+    script.id = "google-maps-script"
+    script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyAoQLRKz13FBEirZBqZ04c1pPtmCnLh9P8&callback=initMap`
+    script.async = true
+    script.defer = true
+    document.head.appendChild(script)
 
-    const injectJS = (src: string, onload?: () => void) => {
-      if (!document.querySelector(`script[src="${src}"]`)) {
-        const script = document.createElement("script")
-        script.src = src
-        script.onload = onload || null
-        document.head.appendChild(script)
-      }
-    }
-
-    injectCSS(leafletCSS)
-    injectCSS(drawCSS)
-
-    injectJS(leafletJS, () => {
-      injectJS(drawJS, () => {
-        if (window.L && mapRef.current) {
-          initializeMap()
-        }
-      })
-    })
+    window.initMap = initializeMap
   }
 
   const initializeMap = () => {
-    if (isMapInitialized.current || !mapRef.current || !window.L) return
+    if (!mapRef.current || map) return
 
     try {
-      const leafletMap = window.L.map(mapRef.current, {
-        zoomSnap: 1,
-        zoomDelta: 1,
-        maxZoom: 21, // 🔼 Increased zoom level
-      }).setView([coordinates.lat, coordinates.lng], 20) // 🔼 Start closer in
+      const defaultCenter = { lat: coordinates.lat, lng: coordinates.lng }
 
-      const tileLayer = window.L.tileLayer(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        {
-          attribution: "Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics",
-          maxZoom: 21,         // 🔼 Allow deeper zoom
-          maxNativeZoom: 19,   // 🔁 Esri serves up to Z19
-        }
-      )
-      tileLayer.addTo(leafletMap)
-
-      const drawnItems = new window.L.FeatureGroup()
-      leafletMap.addLayer(drawnItems)
-
-      const drawControl = new window.L.Control.Draw({
-        draw: {
-          polygon: {
-            allowIntersection: false,
-            showArea: true,
-            shapeOptions: {
-              color: "#00bcd4",
-              weight: 2,
-              fillOpacity: 0.3,
-            },
-          },
-          polyline: false,
-          rectangle: false,
-          circle: false,
-          marker: false,
-          circlemarker: false,
-        },
-        edit: {
-          featureGroup: drawnItems,
-          edit: false,
-          remove: false,
-        },
-      })
-      leafletMap.addControl(drawControl)
-
-      leafletMap.on("draw:created", (e: any) => {
-        const layer = e.layer
-        const latlngs = layer.getLatLngs()[0].map((pt: any) => [pt.lat, pt.lng])
-        onRooftopDraw?.(latlngs)
-        drawnItems.addLayer(layer)
+      const googleMap = new window.google.maps.Map(mapRef.current, {
+        center: defaultCenter,
+        zoom: 20,
+        mapTypeId: "satellite",
+        disableDefaultUI: false,
       })
 
-      setMap(leafletMap)
+      setMap(googleMap)
       setIsLoading(false)
       setError(null)
-      isMapInitialized.current = true
+
+      // Detect user's current location
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords
+            const userLocation = { lat: latitude, lng: longitude }
+            setCoordinates(userLocation)
+
+            const marker = new window.google.maps.Marker({
+              position: userLocation,
+              map: googleMap,
+              title: "Your Location",
+            })
+
+            const infoWindow = new window.google.maps.InfoWindow({
+              content: "You are here",
+            })
+
+            marker.addListener("click", () => {
+              infoWindow.open(googleMap, marker)
+            })
+
+            googleMap.setCenter(userLocation)
+          },
+          (geoError) => {
+            console.warn("Geolocation error:", geoError.message)
+          }
+        )
+      }
     } catch (err) {
-      console.error("Map init error:", err)
+      console.error("Google Maps init error:", err)
       setError("Failed to load map. Please refresh.")
       setIsLoading(false)
     }
@@ -135,7 +105,7 @@ const InteractiveMap = ({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Satellite className="h-5 w-5 text-primary" />
-            <h3 className="text-lg font-semibold">Satellite Rooftop View</h3>
+            <h3 className="text-lg font-semibold">Google Satellite Rooftop View</h3>
           </div>
         </div>
 
@@ -153,7 +123,7 @@ const InteractiveMap = ({
           Location: {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}
         </p>
         <p className="text-xs text-muted-foreground mt-1">
-          Draw your rooftop boundary to begin analysis
+          Your current location is marked on the map
         </p>
       </div>
 
